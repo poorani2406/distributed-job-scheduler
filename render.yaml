@@ -1,4 +1,3 @@
-# render.yaml
 databases:
   - name: djs-db
     databaseName: scheduler
@@ -6,66 +5,91 @@ databases:
     plan: free
 
 services:
-  # 1. FastAPI Backend Web Service
+
+  # 1. FastAPI Backend
   - type: web
     name: djs-backend
-    env: docker
+    runtime: docker
     dockerfilePath: backend/Dockerfile
     plan: free
     healthCheckPath: /health
+
     envVars:
       - key: DATABASE_URL
         fromDatabase:
           name: djs-db
           property: connectionString
+
       - key: JWT_SECRET
         generateValue: true
+
       - key: JWT_ALGORITHM
         value: HS256
+
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
-        value: 1440
+        value: "1440"
+
+      # Get frontend's public Render URL
       - key: CORS_ORIGINS
         fromService:
+          type: web
           name: djs-frontend
-          property: url
-      - key: WORKER_CONCURRENCY
-        value: 4
-      - key: WORKER_POLL_INTERVAL_SECONDS
-        value: 1
-      - key: HEARTBEAT_INTERVAL_SECONDS
-        value: 5
-      - key: STALE_JOB_TIMEOUT_SECONDS
-        value: 60
-    dockerCommand: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+          envVarKey: RENDER_EXTERNAL_URL
 
-  # 2. React/Vite Frontend Static Site
+      - key: WORKER_CONCURRENCY
+        value: "4"
+
+      - key: WORKER_POLL_INTERVAL_SECONDS
+        value: "1"
+
+      - key: HEARTBEAT_INTERVAL_SECONDS
+        value: "5"
+
+      - key: STALE_JOB_TIMEOUT_SECONDS
+        value: "60"
+
+    dockerCommand: >
+      sh -c "alembic upgrade head &&
+      uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+
+
+  # 2. React Frontend
   - type: web
     name: djs-frontend
-    env: static
+    runtime: static
     plan: free
-    buildCommand: npm run build
+
+    buildCommand: npm install && npm run build
     staticPublishPath: dist
     rootDir: frontend
+
     envVars:
       - key: VITE_API_URL
         fromService:
+          type: web
           name: djs-backend
-          property: url
+          envVarKey: RENDER_EXTERNAL_URL
 
-  # 3. Persistent Background Worker
+
+  # 3. Background Worker
   - type: worker
     name: djs-worker
-    env: docker
+    runtime: docker
     dockerfilePath: worker/Dockerfile
-    plan: free
+    plan: starter
+
     envVars:
       - key: API_BASE_URL
         fromService:
+          type: web
           name: djs-backend
-          property: url
+          envVarKey: RENDER_EXTERNAL_URL
+
       - key: WORKER_CONCURRENCY
-        value: 4
+        value: "4"
+
       - key: WORKER_POLL_INTERVAL_SECONDS
-        value: 1
+        value: "1"
+
       - key: HEARTBEAT_INTERVAL_SECONDS
-        value: 5
+        value: "5"
